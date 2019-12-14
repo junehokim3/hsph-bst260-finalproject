@@ -1,0 +1,896 @@
+---
+title: "Trends & Disparities in Health Insurance & Utilization among Hispanic Immigrants in the United States, 2011-2018 (BST260 Final Project)"
+author: "June-Ho Kim"
+date: "December 2019"
+output: html_document
+---
+
+*Note: Data is stored in the GitHub repository (https://github.com/junehokim3/hsph-bst260-finalproject). Code is written such that the data is pulled from the repository. Code that does not directly reference the dataset is written so that it is not run when knitting the R Markdown file.*
+
+## Overview and Motivation
+
+The Patient Protection and Affordable Care Act (ACA or colloquially called "Obamacare") has been associated with decreases in uninsured rates along with improvements in access to care in the United States. Additionally, the ACA may have had narrowed certain health disparities by race and ethnicity, though this varies across subgroups and by immigration status. Notably, the provisions of the ACA are not available to undocumented immigrants while non-citizens are eligible for Medicaid after five years of living in the United States (or if they live in a state with special provisions). Therefore, the ACA may have had differential immediate and long-term effects on health insurance coverage and health care utilization based on race/ethnicity and immigration status.
+
+In this study, I am taking a broad overview of recent national health data in order to observe and visualize patterns in insurance and utilization, analyze trends, and identify next steps for further investigation. I focused specifically on comparing the Hispanic immigrant population with the non-immigrant white population as historically there have been large disparities and various policies and rhetoric over the past decade may have had differential effects on the populations.
+
+## Related Work
+
+I am currently collaborating with other Harvard Medical School fellows in health services research to organize a conference on immigrant health. Recent research on immigrant health inspired me to take a look at publicly available national health data in order to wrangle the data myself and better understand trends and patterns for immigrant populations, particularly those that may have been affected both by the ACA and more recent national policies and rhetoric from the Trump administration. 
+
+## Initial Questions
+
+My primary question of interest was: following Medicaid expansion, have there been significant and sustained improvements in health insurance coverage and health care utilization among Hispanic non-citizen and naturalized immigrants compared to Non-Hispanic White citizens? This question was comprised of several different other questions:
+
+* What are the demographic characteristics of the three groups?
+
+* What are the overall rates of health care insurance coverage (uninsurance, Medicaid, private insurance, Medicare) and utilization (delays in care, skipping care due to cost, visits to health professionals, difficulty paying bills) by group?
+
+* What are the annual trends in coverage and utilization from 2011 to 2018?
+
+* Assuming 2014 was the primary time of Medicaid expansion, was there a significant change in coverage and utilization for Hispanic immigrants compared to non-Hispanic White citizens?
+
+As I began my exploratory analysis, there were some notable gains for Hispanic immigrants, and I became curious as to whether these improvements persisted through the current administration. I ran a secondary analysis to see if there were any significant differences before and after the 2016 election.
+
+## Data
+My primary data source was the National Health Insurance Survey (NHIS), publicly available data from the Centers for Disease Control (CDC). I used the "Person" datasets from 2011 to 2018 by downloading the corresponding ASCII or CSV files then converting them into .Rdata formats. For example, the 2017 dataset can be found here: ftp://ftp.cdc.gov/pub/Health_Statistics/NCHS/Datasets/NHIS/2017/personsxcsv.zip
+
+```{r libraries, message=FALSE}
+### Load libraries ###
+library(knitr)
+library(nlme) #linear and nonlinear mixed effects models
+library(car) #applied regression
+library(tidyverse)
+library(survey) #complex survey procedures
+library(ggplot2)
+library(scales)
+library(tableone) #descriptive stats for Table 1
+library(gridExtra)
+library(kableExtra)
+```
+
+#### Data Cleaning and Concatenating
+Next, I selected my initial variables of interest and cleaned each dataset as necessary in order to allow me to harmoniously concatenate the eight years:
+
+*Note: only 2011 and 2018 shown to save space, filepaths not defined*
+```{r dataclean, eval=FALSE, echo=TRUE}
+
+### NHIS 2011 Person File ###
+
+load("***/nhis11_person.Rdata") #filepath to raw dataset
+
+nhis11_person <- nhis11_person %>% 
+  mutate(PSTRAT = STRAT_P+1000) %>% #rename and also renumber since strata are different from later years
+  rename(PPSU = PSU_P) #rename to match other years
+
+nhis11_immig <- subset(nhis11_person, select = c(SRVY_YR, HHX, INTV_MON, FMX, FPX, WTIA, WTFA, REGION, PSTRAT, PPSU, SEX, ORIGIN_I, HISPAN_I, RACERPI2, MRACRPI2, MRACBPI2, RACRECI3, HISCODI3, AGE_P, R_MARITL, CDCMSTAT, LATIME7, LAUNIT7, LADURA7, LADURB7, LACHRC7, LATIME9, LAUNIT9, LADURA9, LADURB9, LACHRC9, LATIME10, LAUNIT10, LADURA10, LADURB10, LACHRC10, LATIME11, LAUNIT11, LADURA11, LADURB11, LACHRC11, LATIME12, LAUNIT12, LADURA12, LADURB12, LACHRC12, LATIME17, LAUNIT17, LADURA17, LADURB17, LACHRC17, LATIME29, LAUNIT29, LADURA29, LADURB29, LACHRC29, PHSTAT, PDMED12M, PNMED12M, PHOSPYR2, HOSPNO, HPNITE, PHCDV2W, PHCDVN2W, P10DVYR, NOTCOV, MEDICARE, MCPART, MCCHOICE, MEDICAID, HICOSTR1, HICOSTR2, HILAST, HISTOP1, HISTOP2, HISTOP3, HISTOP4, HISTOP5, HISTOP6, HISTOP7, HISTOP8, HISTOP9, HISTOP10, HISTOP11, HISTOP12, HISTOP13, HISTOP14, HISTOP15, HINOTYR, HINOTMYR, FHICHNG, FHIKDBA, FHIKDBB, FHIKDBC, FHIKDBD, FHIKDBE, FHIKDBF, FHIKDBG, FHIKDBH, FHIKDBI, FHIKDBJ, FHIKDBK, HCSPFYR, MEDBILL, MEDBPAY, MEDBNOP, FSA, HIKINDNA, HIKINDNB, HIKINDND, HIKINDNE, HIKINDNF, HIKINDNG, HIKINDNH, HIKINDNI, HIKINDNJ, HIKINDNK, MCAREPRB, MCAIDPRB, SINCOV, PLBORN, REGIONBR, GEOBRTH, YRSINUS, CITIZENP, EDUC1, DOINGLWP, WHYNOWKP, WRKHRS2, WRKFTALL, WRKLYR1, WRKMYR, ERNYR_P, HIEMPOF))
+
+save(nhis11_immig, file = "***/nhis11_immig.Rdata")
+
+### NHIS 2018 Person File ###
+
+load("***/nhis18_person.Rdata")
+
+nhis18_person <- nhis18_person %>% 
+  rename(HILAST = HILAST2, HOSPNO = HOSPNO_P, HPNITE = HPNITE_P, PHCDVN2W = PHCDN2WP)
+
+nhis18_immig <- subset(nhis18_person, select = c(SRVY_YR, HHX, INTV_MON, FMX, FPX, WTIA, WTFA, REGION, PSTRAT, PPSU, SEX, ORIGIN_I, HISPAN_I, RACERPI2, MRACRPI2, MRACBPI2, RACRECI3, HISCODI3, AGE_P, R_MARITL, CDCMSTAT, LATIME7, LAUNIT7, LADURA7, LADURB7, LACHRC7, LATIME9, LAUNIT9, LADURA9, LADURB9, LACHRC9, LATIME10, LAUNIT10, LADURA10, LADURB10, LACHRC10, LATIME11, LAUNIT11, LADURA11, LADURB11, LACHRC11, LATIME12, LAUNIT12, LADURA12, LADURB12, LACHRC12, LATIME17, LAUNIT17, LADURA17, LADURB17, LACHRC17, LATIME29, LAUNIT29, LADURA29, LADURB29, LACHRC29, PHSTAT, PDMED12M, PNMED12M, PHOSPYR2, HOSPNO, HPNITE, PHCDV2W, PHCDVN2W, P10DVYR, NOTCOV, MEDICARE, MCPART, MCCHOICE, MEDICAID, HICOSTR1, HICOSTR2, HILAST, HISTOP1, HISTOP2, HISTOP3, HISTOP4, HISTOP5, HISTOP6, HISTOP7, HISTOP8, HISTOP9, HISTOP10, HISTOP11, HISTOP12, HISTOP13, HISTOP14, HISTOP15, HINOTYR, HINOTMYR, FHICHNG, FHIKDBA, FHIKDBB, FHIKDBC, FHIKDBD, FHIKDBE, FHIKDBF, FHIKDBG, FHIKDBH, FHIKDBI, FHIKDBJ, FHIKDBK, HCSPFYR, MEDBILL, MEDBPAY, MEDBNOP, FSA, HIKINDNA, HIKINDNB, HIKINDND, HIKINDNE, HIKINDNF, HIKINDNG, HIKINDNH, HIKINDNI, HIKINDNJ, HIKINDNK, MCAREPRB, MCAIDPRB, SINCOV, PLBORN, REGIONBR, GEOBRTH, YRSINUS, CITIZENP, EDUC1, DOINGLWP, WHYNOWKP, WRKHRS2, WRKFTALL, WRKLYR1, WRKMYR, ERNYR_P, HIEMPOF))
+
+save(nhis18_immig, file = "***/nhis18_immig.Rdata")
+
+##### Combine datasets #####
+nhis_immig <- rbind(nhis11_immig, nhis12_immig)
+nhis_immig <- rbind(nhis_immig, nhis13_immig)
+nhis_immig <- rbind(nhis_immig, nhis14_immig)
+nhis_immig <- rbind(nhis_immig, nhis15_immig)
+nhis_immig <- rbind(nhis_immig, nhis16_immig)
+nhis_immig <- rbind (nhis_immig, nhis17_immig)
+nhis_immig <- rbind(nhis_immig, nhis18_immig)
+
+save(nhis_immig, file = "***/nhis_immig.Rdata")
+```
+
+#### Data Wrangling for Analysis
+After creating a master file, I renamed variables, recoded answer choices, selected variables of interest, and created new variables:
+```{r, echo=FALSE}
+library(repmis)
+source_data("https://github.com/junehokim3/hsph-bst260-finalproject/blob/master/nhis_immig.Rdata?raw=true")
+```
+
+```{r datawrangle, warning=FALSE, error=FALSE}
+################################################################################
+# Data Wrangling Part 1- Renaming and Recoding Variables
+################################################################################
+nhis_immig$year <- nhis_immig$SRVY_YR
+nhis_immig$hhnum <- nhis_immig$HHX
+
+nhis_immig$month <- nhis_immig$INTV_MON #1=Jan, 2=Feb, 3=Mar, etc
+
+nhis_immig$famnum <- nhis_immig$FMX
+nhis_immig$personnum <- nhis_immig$FPX
+nhis_immig$wtinterim <- (nhis_immig$WTIA)/8
+nhis_immig$wtfinal <- (nhis_immig$WTFA)/8
+
+nhis_immig$region <- nhis_immig$REGION #1=Northeast, 2=Midwest, 3=South, 4=West
+nhis_immig$region <- as.factor(nhis_immig$region)
+
+nhis_immig$strata <- nhis_immig$PSTRAT
+nhis_immig$psu <- nhis_immig$PPSU
+
+nhis_immig$sex <- nhis_immig$SEX #1=male, 2=female
+nhis_immig$sex <- as.factor(nhis_immig$sex)
+
+nhis_immig$hispanic <- nhis_immig$ORIGIN_I #1=yes, 2=no
+nhis_immig$hispanic <- as.factor(nhis_immig$hispanic)
+
+nhis_immig$raceethn <- nhis_immig$HISCODI3 #1=hispanic, 2=non-hispanic white,
+  # 3=non-hispanic black, 4=non-hispanic asian, 5=non-hispanic other
+nhis_immig$raceethn <- as.factor(nhis_immig$raceethn)
+
+nhis_immig$age <- nhis_immig$AGE_P #0=under 1 yr, 1-84=1-84 yrs, 85=85+ yrs
+
+nhis_immig$marital <- nhis_immig$CDCMSTAT #1=separated, 2=divorced, 3=married, 4=single/never married
+  # 5=widowed #9=unknown marital status
+nhis_immig$marital <- as.factor(nhis_immig$marital)
+         
+nhis_immig$hearttime <- nhis_immig$LATIME7
+nhis_immig$heartunit <- nhis_immig$LAUNIT7
+nhis_immig$heartyrs <- nhis_immig$LADURA7
+nhis_immig$heartmos <- nhis_immig$LADURB7
+nhis_immig$heartchronic <- nhis_immig$LACHRC7 #1=chronic, 2=not chronic
+
+nhis_immig$stroketime <- nhis_immig$LATIME8
+nhis_immig$strokeunit <- nhis_immig$LAUNIT8
+nhis_immig$strokeyrs <- nhis_immig$LADURA8
+nhis_immig$strokemos <- nhis_immig$LADURB8
+nhis_immig$strokechronic <- nhis_immig$LACHRC8 #1=chronic, 2=not chronic
+
+nhis_immig$htntime <- nhis_immig$LATIME9
+nhis_immig$htnunit <- nhis_immig$LAUNIT9
+nhis_immig$htnyrs <- nhis_immig$LADURA9
+nhis_immig$htnmos <- nhis_immig$LADURB9
+nhis_immig$htnchronic <- nhis_immig$LACHRC9 #1=chronic, 2=not chronic
+
+nhis_immig$dmtime <- nhis_immig$LATIME10
+nhis_immig$dmunit <- nhis_immig$LAUNIT10
+nhis_immig$dmyrs <- nhis_immig$LADURA10
+nhis_immig$dmmos <- nhis_immig$LADURB10
+nhis_immig$dmchronic <- nhis_immig$LACHRC10 #1=chronic, 2=not chronic
+
+nhis_immig$lungtime <- nhis_immig$LATIME11
+nhis_immig$lungunit <- nhis_immig$LAUNIT11
+nhis_immig$lungyrs <- nhis_immig$LADURA11
+nhis_immig$lungmos <- nhis_immig$LADURB11
+nhis_immig$lungchronic <- nhis_immig$LACHRC11 #1=chronic, 2=not chronic
+
+nhis_immig$cancertime <- nhis_immig$LATIME12
+nhis_immig$cancerunit <- nhis_immig$LAUNIT12
+nhis_immig$canceryrs <- nhis_immig$LADURA12
+nhis_immig$cancermos <- nhis_immig$LADURB12
+nhis_immig$cancerchronic <- nhis_immig$LACHRC12 #1=chronic, 2=not chronic
+
+nhis_immig$depresstime <- nhis_immig$LATIME17
+nhis_immig$depressnit <- nhis_immig$LAUNIT17
+nhis_immig$depressyrs <- nhis_immig$LADURA17
+nhis_immig$depressmos <- nhis_immig$LADURB17
+nhis_immig$depresschronic <- nhis_immig$LACHRC17 #1=chronic, 2=not chronic
+
+nhis_immig$substtime <- nhis_immig$LATIME29
+nhis_immig$substunit <- nhis_immig$LAUNIT29
+nhis_immig$substyrs <- nhis_immig$LADURA29
+nhis_immig$substmos <- nhis_immig$LADURB29
+nhis_immig$substchronic <- nhis_immig$LACHRC29 #1=chronic, 2=not chronic
+
+nhis_immig$prom <- nhis_immig$PHSTAT
+nhis_immig$prom <- ifelse(nhis_immig$prom==1 | nhis_immig$prom==2, 1, 0)
+
+nhis_immig$delaycare <- nhis_immig$PDMED12M #Has medical care been delayed for __ due to cost in past 12 months
+nhis_immig$delaycare <- ifelse(nhis_immig$delaycare==1, 1, 0)
+
+nhis_immig$misscare <- nhis_immig$PNMED12M #Needed but did NOT get medical care due to cost in past 12 months
+nhis_immig$misscare <- ifelse(nhis_immig$misscare==1, 1, 0)
+
+nhis_immig$hospnite <- nhis_immig$PHOSPYR2 #Hospital overnight in past 12 mos
+nhis_immig$hosptimenum <- nhis_immig$HOSPNO #No. of times in hospital o/n, 12 mos
+nhis_immig$hospnitenum <- nhis_immig$HPNITE #No. of nights in hospital, 12 mos
+
+nhis_immig$clinicvisit <- nhis_immig$PHCDV2W #Did __ see health professional in office, 2 wks
+nhis_immig$clinicvisit <- ifelse(nhis_immig$clinicvisit==1, 1, 0)
+
+nhis_immig$clinicvisitnum <- nhis_immig$PHCDVN2W #No. of times visited health professional, 2 wks
+
+nhis_immig$clinicvisitfreq10 <- nhis_immig$P10DVYR #Did __ receive care 10+ times in 12 mos
+nhis_immig$clinicvisitfreq10 <- ifelse(nhis_immig$clinicvisitfreq10==1, 1, 0)
+         
+nhis_immig$covered <- nhis_immig$NOTCOV #1=not covered, 2=covered, 9=don't know
+nhis_immig$covered <- as.factor(nhis_immig$covered)
+
+nhis_immig$medicare <- nhis_immig$MEDICARE #1 & 2=yes, 3=no, 4=refused, 9=don't know
+nhis_immig$medicare <- as.factor(nhis_immig$medicare)
+
+nhis_immig$medicarepart <- nhis_immig$MCPART #1-Part A, 2-Part B, 3-A&B, 7-refused, 8-not ascertained, 9-don't know
+nhis_immig$medicarepart <- as.factor(nhis_immig$medicarepart)
+
+nhis_immig$medadvantage <- nhis_immig$MCCHOICE #1-yes 2-no 7-refused 8-not ascertained 9-don't know
+nhis_immig$medadvantage <- as.factor(nhis_immig$medadvantage)
+
+nhis_immig$medicaid <- nhis_immig$MEDICAID #1 & 2=yes, 3=no, 4=refused, 9=don't know
+nhis_immig$medicaid <- as.factor(nhis_immig$medicaid)
+
+nhis_immig$nocover <- nhis_immig$HINOTYR #No health coverage during past 12 mos, 1-yes, 2-no
+nhis_immig$nocover <- as.factor(nhis_immig$nocover)
+
+nhis_immig$nocovermos <- nhis_immig$HINOTMYR #Mos w/o coverage in past 12 mos
+nhis_immig$healthcost <- nhis_immig$HCSPFYR #Amt family spent for medical care, 0-zero, 1-<500, 2-500-1999,
+  # 3-2000-2999, 4-3000-4999, 5-5000+, 7-refused, 8-not ascertained, 9-don't know
+nhis_immig$healthcost <- as.factor(nhis_immig$healthcost)
+
+nhis_immig$billprob <- nhis_immig$MEDBILL #Problems paying medical bills, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$billprob <- ifelse(nhis_immig$billprob==1, 1, 0)
+
+nhis_immig$billpaytime <- nhis_immig$MEDBPAY #Bills being paid off over time, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$billpaytime <- ifelse(nhis_immig$billpaytime==1, 1, 0)
+
+nhis_immig$billnopay <- nhis_immig$MEDBNOP #Unable to pay medical bills, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$billnopay <- ifelse(nhis_immig$billnopay==1, 1, 0)
+
+nhis_immig$private <- nhis_immig$HIKINDNA #Private health insurance, 1-mentioned, 2-not mentioned, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$private <- ifelse(nhis_immig$private==1, 1, 0)
+
+nhis_immig$mcare <- nhis_immig$HIKINDNB #Medicare, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$mcare <- ifelse(nhis_immig$mcare==1, 1, 0)
+
+nhis_immig$mcaid <- nhis_immig$HIKINDND #Medicaid, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$mcaid <- ifelse(nhis_immig$mcaid==1, 1, 0)
+
+nhis_immig$schip <- nhis_immig$HIKINDNE #SCHIP, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$schip <- ifelse(nhis_immig$schip==1, 1, 0)
+
+nhis_immig$militarycare <- nhis_immig$HIKINDNF #Military health care, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$private <- ifelse(nhis_immig$private==1, 1, 0)
+
+nhis_immig$ihs <- nhis_immig$HIKINDNG #Indian health service, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$ihs <- ifelse(nhis_immig$ihs==1, 1, 0)
+
+nhis_immig$stateplan <- nhis_immig$HIKINDNH #State-sponsored health plan, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$stateplan <- ifelse(nhis_immig$stateplan==1, 1, 0)
+
+nhis_immig$othgovtplan <- nhis_immig$HIKINDNI #Other govt plan, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$othgovtplan <- ifelse(nhis_immig$othgovtplan==1, 1, 0)
+
+nhis_immig$singleservice <- nhis_immig$HIKINDNJ #Single service plan, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$singleservice <- ifelse(nhis_immig$singleservice==1, 1, 0)
+
+nhis_immig$nocoverage <- nhis_immig$HIKINDNK #NO coverage of any type, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$nocoverage <- ifelse(nhis_immig$nocoverage==1, 1, 0)
+
+nhis_immig$usborn <- nhis_immig$PLBORN #Born in U.S., 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$usborn <- as.factor(nhis_immig$usborn)
+
+nhis_immig$regionborn <- nhis_immig$REGIONBR #Geographic region of birth recode, 
+  #1-US, 2-Mexico, Central Am, Caribeean, 3-S America, 4-Europe, 5-Russia, 6-Africa, 7-Middle East...
+nhis_immig$regionborn <- as.factor(nhis_immig$regionborn)
+
+nhis_immig$yrsus <- nhis_immig$YRSINUS #Years in U.S., 1-<1yr, 2-1-5yrs, 3-5-10yrs, 4-10-15yrs, 5-15+yrs, 9-unknown
+nhis_immig$yrsus <- ifelse(nhis_immig$yrsus==1 | nhis_immig$yrsus==2, 1, 0)
+#Recode for <5 yrs vs >5 yrs in U.S.
+
+nhis_immig$citizen <- nhis_immig$CITIZENP #US citizenship status, 1-yes, 2-no, 7-refused, 8-not ascert, 9-don't know
+nhis_immig$citizen <- as.factor(nhis_immig$citizen)
+
+nhis_immig$educ <- nhis_immig$EDUC1 #Highest level of school completed
+nhis_immig$educ <- as.factor(nhis_immig$educ)
+
+nhis_immig$earnings <- nhis_immig$ERNYR_P #Total earnings last year
+nhis_immig$earnings <- as.factor(nhis_immig$earnings)
+
+################################################################################
+# Data Wrangling Part 2 - Subset Variables & Create New Variables 
+################################################################################
+nhisAnalysis <- nhis_immig %>%
+  select(year, month, wtfinal, region, strata, psu, sex, hispanic,
+         raceethn, age, marital, prom, delaycare, misscare, hospnite, 
+         hosptimenum, hospnitenum, clinicvisit, clinicvisitnum, clinicvisitfreq10,
+         healthcost, billprob, billpaytime, billnopay, private, mcare, mcaid, schip, 
+         nocoverage, usborn, regionborn, yrsus, citizen, educ, earnings)
+
+# Define immigrant vs not - Hispanic immigrant non-citizen (raceethn = 1 + usborn = 2 + regionborn = 2 OR 3 +
+  # citizen = 2) vs Hispanic immigrant citizen (raceethn = 1 + usborn = 2 + regionborn = 2 OR 3 +
+  # citizen = 1) vs white non-immigrant (raceethn = 2 + usborn = 1)
+nhisAnalysis <- nhisAnalysis %>%
+  mutate (
+    immig = ifelse(raceethn==1 & usborn==2 & (regionborn==2 | regionborn==3) & citizen==2, 1, ifelse(raceethn==1 & usborn==2 & (regionborn==2 | regionborn==3) & citizen==1, 2, ifelse(raceethn==2 & usborn==1,3,NA)))
+    )
+
+# Define time (in years)
+nhisAnalysis <- nhisAnalysis %>%
+  mutate (
+    time = year-2010
+  )
+
+# Define denominator (annual population by group)
+nhisAnalysis <- nhisAnalysis %>%
+  group_by(immig) %>% add_count(time, name="pop_year")
+
+# Create new dataset with annual outcomes by group
+nhisOutcomes <- nhisAnalysis %>%
+  group_by(immig, time) %>%
+  summarize(uninsuredrate = sum(nocoverage)*100 / mean(pop_year),
+    medicaidrate = sum(mcaid)*100 / mean(pop_year),
+    delayrate = sum(delaycare)*100 / mean(pop_year),
+    healthrate = sum(prom)*100 / mean(pop_year),
+    missrate = sum(misscare)*100 / mean(pop_year),
+    billprobrate = sum(billprob)*100 / mean(pop_year),
+    billpayrate = sum(billpaytime)*100 / mean(pop_year),
+    clinicrate = sum(clinicvisit)*100 / mean(pop_year),
+    clinic10rate = sum(clinicvisitfreq10)*100 / mean(pop_year)
+  )
+```
+
+## Exploratory Analysis
+For my exploratory analysis, I first created a "Table 1" in order to look at various characteristics across the three groups of interest (Hispanic immigrant non-citizen, Hispanic immigrant citizen, and Non-Hispanic White citizen). For this analysis, I did not incorporate survey weights.
+
+```{r tableone, include=FALSE}
+CreateTableOne(data=nhisAnalysis)
+dput(names(nhisAnalysis))
+myVars <- c("year", "month", "wtfinal", "region", "strata", "psu", "sex", 
+            "hispanic", "raceethn", "age", "marital", "prom", "delaycare", 
+            "misscare", "hospnite", "hosptimenum", "hospnitenum", "clinicvisit", 
+            "clinicvisitnum", "clinicvisitfreq10", "healthcost", "billprob", 
+            "billpaytime", "private", "mcare", "mcaid", "nocoverage", "usborn", 
+            "regionborn", "yrsus", "citizen", "educ", "earnings", "immig"
+)
+
+catVars <- c("year","region","sex","hispanic","raceethn","marital","prom", "delaycare", "misscare", "hospnite","clinicvisit","clinicvisitfreq10", "healthcost", "billprob","billpaytime", "private", "mcare", "mcaid", "nocoverage", "usborn","regionborn", "yrsus", "citizen", "educ", "earnings", "immig"
+)
+
+tab1 <- CreateTableOne(vars = myVars, strata="immig", data = nhisAnalysis, factorVars = catVars)
+tab1export <- print(tab1, showAllLevels=TRUE, quote=FALSE, noSpaces=TRUE, printToggle = FALSE)
+write.csv(tab1export, file = "nhis_table1_draft.csv")
+```
+
+```{r print table 1, echo=FALSE}
+library(readr)
+urlfile="https://raw.githubusercontent.com/junehokim3/hsph-bst260-finalproject/master/nhis_table1.csv"
+tab1 <- read.csv(url(urlfile))
+tab1 %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+I also ran some quick plots to visualize some baseline demographics, such as age:
+
+##### AGE
+```{r, message=FALSE}
+
+nhisAnalysis %>% filter(!is.na(immig)) %>%
+  ggplot(aes(x = as.factor(immig), y = age)) +
+  geom_boxplot() +
+  scale_x_discrete(labels=c("Hispanic immigrant non-citizen","Hispanic immigrant citizen","Non-Hispanic white citizen")) +
+  xlab("Subpopulation")
+```
+
+Then, as my main visualizations, I used line plots to map trends in health insurance coverage and utilization from 2011 to 2018.
+
+```{r plotprimary}
+##### PRIMARY OUTCOME: UNINSURED RATE #####
+# Plot time series for Hispanic immigrant non-citizens
+plot(nhisOutcomes$time[1:8],nhisOutcomes$uninsuredrate[1:8],
+     ylab="% Uninsured Per Year",
+     ylim=c(0,100),
+     main="UNINSURED RATE, 2011-2018",
+     xlab="Year",
+     type="l",
+     col="red",
+     xaxt="n")
+
+# Plot Hispanic immigrant naturalized citizens
+points(nhisOutcomes$time[9:16],nhisOutcomes$uninsuredrate[9:16],
+       type='l',
+       col="green")
+
+# Plot non-immigrant White people
+points(nhisOutcomes$time[17:24],nhisOutcomes$uninsuredrate[17:24],
+       type='l',
+       col="blue")
+
+# X-axis year labels
+axis(1, at=1:8, labels=2011:2018)
+
+# Add in points
+points(nhisOutcomes$time[1:8],nhisOutcomes$uninsuredrate[1:8],
+       col="red",
+       pch=20)
+
+points(nhisOutcomes$time[9:16],nhisOutcomes$uninsuredrate[9:16],
+       col="green",
+       pch=20)
+
+points(nhisOutcomes$time[17:24],nhisOutcomes$uninsuredrate[17:24],
+       col="blue",
+       pch=20)
+
+# Label timepoint for Medicaid Expansion
+abline(v=3.5,lty=2)
+
+# Add in a legend
+legend(x=1, y=100, legend=c("Hispanic immigrant non-citizen","Hispanic immigrant citizen","Non-Hispanic White native citizen"),
+       col=c("red","green","blue"),pch=20)
+```
+
+In the primary visualization, it is evident that there are large and persistent health insurance coverage disparities between Hispanic immigrant non-citizens and non-Hispanic White citizens. In 2011, ~60% of the Hispanic immigrant non-citizen population is uninsured. The disparities narrow for Hispanic naturalized citizens after 2013 but still exist in 2018. In this unadjusted visualization, it appears an event in 2014 was associated with a notable decrease in the uninsured population, particularly amongst Hispanic immigrants.
+
+
+```{r, echo=FALSE}
+##### SECONDARY OUTCOME: MEDICAID RATE #####
+# Plot time series for Hispanic immigrant non-citizens
+plot(nhisOutcomes$time[1:8],nhisOutcomes$medicaidrate[1:8],
+     ylab="% w/ Medicaid Per Year",
+     ylim=c(0,30),
+     main="MEDICAID RATE, 2011-2018",
+     xlab="Year",
+     type="l",
+     col="red",
+     xaxt="n")
+
+# Plot Hispanic immigrant naturalized citizens
+points(nhisOutcomes$time[9:16],nhisOutcomes$medicaidrate[9:16],
+       type='l',
+       col="green")
+
+# Plot non-immigrant White people
+points(nhisOutcomes$time[17:24],nhisOutcomes$medicaidrate[17:24],
+       type='l',
+       col="blue")
+
+# X-axis year labels
+axis(1, at=1:8, labels=2011:2018)
+
+# Add in points
+points(nhisOutcomes$time[1:8],nhisOutcomes$medicaidrate[1:8],
+       col="red",
+       pch=20)
+
+points(nhisOutcomes$time[9:16],nhisOutcomes$medicaidrate[9:16],
+       col="green",
+       pch=20)
+
+points(nhisOutcomes$time[17:24],nhisOutcomes$medicaidrate[17:24],
+       col="blue",
+       pch=20)
+
+# Label timepoint for Medicaid Expansion
+abline(v=3.5,lty=2)
+
+# Add in a legend
+legend(x=1, y=30, legend=c("Hispanic immigrant non-citizen","Hispanic immigrant citizen","Non-Hispanic White native citizen"),
+       col=c("red","green","blue"),pch=20)
+```
+
+In this secondary visualization, there appears to be a significant rise in the proportion of the each population with Medicaid, especially from 2014. This increase is most noticeable in the Hispanic immigrant population.
+
+
+```{r, echo=FALSE}
+##### SECONDARY OUTCOME: DELAYING CARE RATE #####
+# Plot time series for Hispanic immigrant non-citizens
+plot(nhisOutcomes$time[1:8],nhisOutcomes$delayrate[1:8],
+     ylab="% Delaying Care Per Year",
+     ylim=c(0,30),
+     main="RATE OF DELAYING CARE DUE TO COST, 2011-2018",
+     xlab="Year",
+     type="l",
+     col="red",
+     xaxt="n")
+
+# Plot Hispanic immigrant naturalized citizens
+points(nhisOutcomes$time[9:16],nhisOutcomes$delayrate[9:16],
+       type='l',
+       col="green")
+
+# Plot non-immigrant White people
+points(nhisOutcomes$time[17:24],nhisOutcomes$delayrate[17:24],
+       type='l',
+       col="blue")
+
+# X-axis year labels
+axis(1, at=1:8, labels=2011:2018)
+
+# Add in points
+points(nhisOutcomes$time[1:8],nhisOutcomes$delayrate[1:8],
+       col="red",
+       pch=20)
+
+points(nhisOutcomes$time[9:16],nhisOutcomes$delayrate[9:16],
+       col="green",
+       pch=20)
+
+points(nhisOutcomes$time[17:24],nhisOutcomes$delayrate[17:24],
+       col="blue",
+       pch=20)
+
+# Label timepoint for Medicaid Expansion
+abline(v=3.5,lty=2)
+
+# Add in a legend
+legend(x=1, y=30, legend=c("Hispanic immigrant non-citizen","Hispanic immigrant citizen","Non-Hispanic White native citizen"),
+       col=c("red","green","blue"),pch=20)
+```
+
+In this figure, there is an overall decrease in the proportion of people who delayed health care due to cost. For the Hispanic immigrant non-citizen population, this decrease appears to occur from 2011 onwards with a steeper decline in 2014 then a plateau from then on. For Hispanic immigrant citizens, there is a large decrease that occurs in 2014 and brings rates in line with the non-Hispanic white native citizen population.
+
+
+```{r, echo=FALSE}
+##### SECONDARY OUTCOME: MISSING CARE RATE #####
+# Plot time series for Hispanic immigrant non-citizens
+plot(nhisOutcomes$time[1:8],nhisOutcomes$missrate[1:8],
+     ylab="% Missing Care Per Year",
+     ylim=c(0,30),
+     main="RATE OF MISSING NECESSARY CARE DUE TO COST, 2011-2018",
+     xlab="Year",
+     type="l",
+     col="red",
+     xaxt="n")
+
+# Plot Hispanic immigrant naturalized citizens
+points(nhisOutcomes$time[9:16],nhisOutcomes$missrate[9:16],
+       type='l',
+       col="green")
+
+# Plot non-immigrant White people
+points(nhisOutcomes$time[17:24],nhisOutcomes$missrate[17:24],
+       type='l',
+       col="blue")
+
+# X-axis year labels
+axis(1, at=1:8, labels=2011:2018)
+
+# Add in points
+points(nhisOutcomes$time[1:8],nhisOutcomes$missrate[1:8],
+       col="red",
+       pch=20)
+
+points(nhisOutcomes$time[9:16],nhisOutcomes$missrate[9:16],
+       col="green",
+       pch=20)
+
+points(nhisOutcomes$time[17:24],nhisOutcomes$missrate[17:24],
+       col="blue",
+       pch=20)
+
+# Label timepoint for Medicaid Expansion
+abline(v=3.5,lty=2)
+
+# Add in a legend
+legend(x=1, y=30, legend=c("Hispanic immigrant non-citizen","Hispanic immigrant citizen","Non-Hispanic White native citizen"),
+       col=c("red","green","blue"),pch=20)
+```
+
+Overall, there is a similar trend in the rate of people delaying care due to cost and the rate of people missing necessary care due to cost.
+
+
+```{r, echo=FALSE}
+##### SECONDARY OUTCOME: SELF-REPORTED HEALTH RATE #####
+# Plot time series for Hispanic immigrant non-citizens
+plot(nhisOutcomes$time[1:8],nhisOutcomes$healthrate[1:8],
+     ylab="% Excellent/Very Good Health Per Year",
+     ylim=c(0,100),
+     main="RATE OF EXCELLENT/VERY GOOD SELF-REPORTED HEALTH, 2011-2018",
+     xlab="Year",
+     type="l",
+     col="red",
+     xaxt="n")
+
+# Plot Hispanic immigrant naturalized citizens
+points(nhisOutcomes$time[9:16],nhisOutcomes$healthrate[9:16],
+       type='l',
+       col="green")
+
+# Plot non-immigrant White people
+points(nhisOutcomes$time[17:24],nhisOutcomes$healthrate[17:24],
+       type='l',
+       col="blue")
+
+# X-axis year labels
+axis(1, at=1:8, labels=2011:2018)
+
+# Add in points
+points(nhisOutcomes$time[1:8],nhisOutcomes$healthrate[1:8],
+       col="red",
+       pch=20)
+
+points(nhisOutcomes$time[9:16],nhisOutcomes$healthrate[9:16],
+       col="green",
+       pch=20)
+
+points(nhisOutcomes$time[17:24],nhisOutcomes$healthrate[17:24],
+       col="blue",
+       pch=20)
+
+# Label timepoint for Medicaid Expansion
+abline(v=3.5,lty=2)
+
+# Add in a legend
+legend(x=1, y=30, legend=c("Hispanic immigrant non-citizen","Hispanic immigrant citizen","Non-Hispanic White native citizen"),
+       col=c("red","green","blue"),pch=20)
+```
+
+Overall, a higher proportion of non-Hispanic white native citizens reported excellent or very good health compared to the other groups. There is no obvious change in self-reported health status over the years.
+
+
+```{r, echo=FALSE}
+##### SECONDARY OUTCOME: PROBLEMS PAYING BILL RATE #####
+# Plot time series for Hispanic immigrant non-citizens
+plot(nhisOutcomes$time[1:8],nhisOutcomes$billprobrate[1:8],
+     ylab="% w/ Problems Paying Medical Bills Per Year",
+     ylim=c(0,30),
+     main="RATE OF PROBLEMS PAYING MEDICAL BILLS, 2011-2018",
+     xlab="Year",
+     type="l",
+     col="red",
+     xaxt="n")
+
+# Plot Hispanic immigrant naturalized citizens
+points(nhisOutcomes$time[9:16],nhisOutcomes$billprobrate[9:16],
+       type='l',
+       col="green")
+
+# Plot non-immigrant White people
+points(nhisOutcomes$time[17:24],nhisOutcomes$billprobrate[17:24],
+       type='l',
+       col="blue")
+
+# X-axis year labels
+axis(1, at=1:8, labels=2011:2018)
+
+# Add in points
+points(nhisOutcomes$time[1:8],nhisOutcomes$billprobrate[1:8],
+       col="red",
+       pch=20)
+
+points(nhisOutcomes$time[9:16],nhisOutcomes$billprobrate[9:16],
+       col="green",
+       pch=20)
+
+points(nhisOutcomes$time[17:24],nhisOutcomes$billprobrate[17:24],
+       col="blue",
+       pch=20)
+
+# Label timepoint for Medicaid Expansion
+abline(v=3.5,lty=2)
+
+# Add in a legend
+legend(x=1, y=10, legend=c("Hispanic immigrant non-citizen","Hispanic immigrant citizen","Non-Hispanic White native citizen"),
+       col=c("red","green","blue"),pch=20)
+```
+
+From 2011-2018, There has been an overall decrease rate of people having problems paying their medical bills, most noticeably amongst Hispanic immigrant non-citizens.
+
+
+```{r, echo=FALSE}
+##### SECONDARY OUTCOME: BILL PAID OVER TIME RATE #####
+# Plot time series for Hispanic immigrant non-citizens
+plot(nhisOutcomes$time[1:8],nhisOutcomes$billpayrate[1:8],
+     ylab="% w/ Bills Paid Over Time Per Year",
+     ylim=c(0,30),
+     main="RATE OF PAYING MEDICAL BILLS OVER TIME, 2011-2018",
+     xlab="Year",
+     type="l",
+     col="red",
+     xaxt="n")
+
+# Plot Hispanic immigrant naturalized citizens
+points(nhisOutcomes$time[9:16],nhisOutcomes$billpayrate[9:16],
+       type='l',
+       col="green")
+
+# Plot non-immigrant White people
+points(nhisOutcomes$time[17:24],nhisOutcomes$billpayrate[17:24],
+       type='l',
+       col="blue")
+
+# X-axis year labels
+axis(1, at=1:8, labels=2011:2018)
+
+# Add in points
+points(nhisOutcomes$time[1:8],nhisOutcomes$billpayrate[1:8],
+       col="red",
+       pch=20)
+
+points(nhisOutcomes$time[9:16],nhisOutcomes$billpayrate[9:16],
+       col="green",
+       pch=20)
+
+points(nhisOutcomes$time[17:24],nhisOutcomes$billpayrate[17:24],
+       col="blue",
+       pch=20)
+
+# Label timepoint for Medicaid Expansion
+abline(v=3.5,lty=2)
+
+# Add in a legend
+legend(x=1, y=10, legend=c("Hispanic immigrant non-citizen","Hispanic immigrant citizen","Non-Hispanic White native citizen"),
+       col=c("red","green","blue"),pch=20)
+```
+
+
+```{r, echo=FALSE}
+##### SECONDARY OUTCOME: CLINIC VISIT RATE #####
+# Plot time series for Hispanic immigrant non-citizens
+plot(nhisOutcomes$time[1:8],nhisOutcomes$clinicrate[1:8],
+     ylab="% Visiting Clinic Per Year",
+     ylim=c(0,30),
+     main="RATE OF PEOPLE VISITING CLINIC, 2011-2018",
+     xlab="Year",
+     type="l",
+     col="red",
+     xaxt="n")
+
+# Plot Hispanic immigrant naturalized citizens
+points(nhisOutcomes$time[9:16],nhisOutcomes$clinicrate[9:16],
+       type='l',
+       col="green")
+
+# Plot non-immigrant White people
+points(nhisOutcomes$time[17:24],nhisOutcomes$clinicrate[17:24],
+       type='l',
+       col="blue")
+
+# X-axis year labels
+axis(1, at=1:8, labels=2011:2018)
+
+# Add in points
+points(nhisOutcomes$time[1:8],nhisOutcomes$clinicrate[1:8],
+       col="red",
+       pch=20)
+
+points(nhisOutcomes$time[9:16],nhisOutcomes$clinicrate[9:16],
+       col="green",
+       pch=20)
+
+points(nhisOutcomes$time[17:24],nhisOutcomes$clinicrate[17:24],
+       col="blue",
+       pch=20)
+
+# Label timepoint for Medicaid Expansion
+abline(v=3.5,lty=2)
+
+# Add in a legend
+legend(x=1, y=30, legend=c("Hispanic immigrant non-citizen","Hispanic immigrant citizen","Non-Hispanic White native citizen"),
+       col=c("red","green","blue"),pch=20)
+```
+
+Overall, there appears to be a slight rise in people visiting health professionals in clinics. The most notable finding, however, is the large disparities in care-seeking with significantly lower rates amongst Hispanic immigrant non-citizens.
+
+
+```{r, echo=FALSE}
+##### SECONDARY OUTCOME: 10+ CLINIC VISITS RATE #####
+# Plot time series for Hispanic immigrant non-citizens
+plot(nhisOutcomes$time[1:8],nhisOutcomes$clinic10rate[1:8],
+     ylab="% w/ 10+ Clinic Visits Per Year",
+     ylim=c(0,30),
+     main="RATE OF 10+ CLINIC VISITS IN PAST YEAR, 2011-2018",
+     xlab="Year",
+     type="l",
+     col="red",
+     xaxt="n")
+
+# Plot Hispanic immigrant naturalized citizens
+points(nhisOutcomes$time[9:16],nhisOutcomes$clinic10rate[9:16],
+       type='l',
+       col="green")
+
+# Plot non-immigrant White people
+points(nhisOutcomes$time[17:24],nhisOutcomes$clinic10rate[17:24],
+       type='l',
+       col="blue")
+
+# X-axis year labels
+axis(1, at=1:8, labels=2011:2018)
+
+# Points
+points(nhisOutcomes$time[1:8],nhisOutcomes$clinic10rate[1:8],
+       col="red",
+       pch=20)
+
+points(nhisOutcomes$time[9:16],nhisOutcomes$clinic10rate[9:16],
+       col="green",
+       pch=20)
+
+points(nhisOutcomes$time[17:24],nhisOutcomes$clinic10rate[17:24],
+       col="blue",
+       pch=20)
+
+# Timepoint for Medicaid Expansion
+abline(v=3.5,lty=2)
+
+# Legend
+legend(x=1, y=30, legend=c("Hispanic immigrant non-citizen","Hispanic immigrant citizen","Non-Hispanic White native citizen"),
+       col=c("red","green","blue"),pch=20)
+```
+
+Similar to the previous visualization, there are significant differences in health care utilization between the citizens and non-citizens. There is no obvious change before and after 2014.
+
+For the Table 1, statistical methods used were t-tests for continuous variables and chi-square tests for categorical variables. 
+
+For the time trend analysis, I considered various approaches including a logistic regression model with insurance status as the binary outcome and adding year as a covariate as well as a single-series interrupted time series analysis in order to look at the trends for access and utilization for Hispanic immigrants over time. I also considered a differences-in-differences analysis. 
+
+Ultimately, after reviewing prior literature and the available data, I decided to run a comparative interrupted time series analysis for my final model.
+
+## Final Analysis
+Given the trends observed in the exploratory analysis, I decided to run a comparative interrupted time series analysis to compare uninsured rates before and after Medicaid expansion in 2014 between Hispanic immigrants and white native citizens. I focused on these two populations because of the drastic disparities in insurance rates.
+
+##### Comparative Interrupted Time Series Analysis
+```{r, message=FALSE}
+nhisOutcomes$hisp <- ifelse(nhisOutcomes$immig==1,1,
+                      ifelse(nhisOutcomes$immig==3,0,NA))
+
+# Define level and slope before and after Medicaid expansion (2011-2013 vs 2014-2018)
+nhisOutcomes$level <- ifelse(nhisOutcomes$time<4,0,1)
+nhisOutcomes$slope <- ifelse(nhisOutcomes$time<4,0,nhisOutcomes$time-3)
+nhisOutcomes$hisptime <- nhisOutcomes$hisp * nhisOutcomes$time
+nhisOutcomes$hisplevel <- nhisOutcomes$hisp * nhisOutcomes$level
+nhisOutcomes$hispslope <- nhisOutcomes$hisp * nhisOutcomes$slope
+
+# Modeling OLS regression
+olsreg<-lm(uninsuredrate ~ time + hisp + hisptime + level + slope + hisplevel + 
+               hispslope, data=nhisOutcomes)
+summary(olsreg)
+confint(olsreg)
+```
+
+Through this model, I found that Hispanic immigrants (without citizenship) had a 50.5% rate of being uninsured compared to non-Hispanic white native citizens. Following the presumed time of Medicaid expansion (2014), there was a 3.5% decrease in uninsurance rate for Hispanic immigrants (not statiscally significant) and a *statistically significant drop in trend of 2.3% uninsurance rate each year after 2014*. These findings suggest that Medicaid expansion nationally may have been associated with significant improvements in insurance coverage for Hispanic immigrant non-citizens, compared to white citizens. Future analyses will adjust for covariates and autocorrelation in order to adjust for potential confounders.
+
+As a final visualization, I plotted the actual trends for the two groups and their counterfactuals in order to visualize the effect of the intervention on both groups from 2011 to 2018.
+
+```{r}
+### FINAL VISUALIZATION ###
+nhisOutcomes <- nhisOutcomes %>% filter(!is.na(hisp))
+
+# Plot data points, labels, and intervention time for Hispanic immigrants
+plot(nhisOutcomes$time[1:8],nhisOutcomes$uninsuredrate[1:8],
+     ylim=c(0,100),
+     ylab="% Uninsured Per Year",
+     xlab="Year",
+     pch=20,
+     col="lightblue",
+     xaxt="n")
+
+axis(1, at=1:8, labels=c(2011:2018))
+
+abline(v=3.5,lty=2)
+
+# Plot data points for white native citizens
+points(nhisOutcomes$time[9:16],nhisOutcomes$uninsuredrate[9:16],
+       col="pink",
+       pch=20)
+
+# Plot pre and post intervention lines for Hispanic immigrants
+lines(nhisOutcomes$time[1:3], fitted(olsreg)[1:3], col="blue",lwd=2)
+lines(nhisOutcomes$time[4:8], fitted(olsreg)[4:8], col="blue",lwd=2)
+
+# Plot counterfactual for Hispanic immigrants
+segments(4,
+         olsreg$coef[1] + olsreg$coef[2]*4 +
+           olsreg$coef[3] + olsreg$coef[4]*4 +
+           olsreg$coef[5] + olsreg$coef[6], 8,
+         olsreg$coef[1] + olsreg$coef[2]*8 +
+           olsreg$coef[3] + olsreg$coef[4]*8 +
+           olsreg$coef[5] + olsreg$coef[6]*8,
+         lty=2,col='blue',lwd=2)
+
+# Plot pre and post intervention lines for white native citizens
+lines(nhisOutcomes$time[9:11], fitted(olsreg)[9:11], col="red",lwd=2)
+lines(nhisOutcomes$time[12:16], fitted(olsreg)[12:16], col="red",lwd=2)
+
+# Plot counterfactual for white native citizens
+segments(4,
+         olsreg$coef[1] + olsreg$coef[2], 
+         8,
+         olsreg$coef[1] + olsreg$coef[2]*8,
+         lty=2,col='red',lwd=2)
+
+legend(x=1,y=100,
+        legend=c("Hispanic immmigrant non-citizen","Non-Hispanic white non-immigrant"),
+        col=c("blue","red"),
+        pch=20)
+```
+
